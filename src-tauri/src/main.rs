@@ -3,65 +3,69 @@
     windows_subsystem = "windows"
 )]
 
-use std::fs::File;
-use std::io::Error;
-use std::io::Read;
+use std::time::{Instant, Duration};
 
-use zip::read::ZipFile;
-use zip::read::ZipArchive;
+use std::fs::File;
+use std::io::{Error, Read};
+
+use zip::read::{ZipFile, ZipArchive};
 use zip::result::ZipError;
 
 use image::ImageError;
 use image::io::Reader as ImageReader;
 
 #[tauri::command]
-fn extract_image_at(path: String, index: usize) -> Result<Vec<Vec<u8>>, String> {
+fn extract_image_at(path: String, page: usize, count: usize) -> Result<Vec<Vec<u8>>, String> {
     let zip_reader: File = File::open(&path).map_err(|e: Error| e.to_string())?;
     let mut zip: ZipArchive<File> = ZipArchive::new(zip_reader).map_err(|e: ZipError| e.to_string())?;
 
     let mut images: Vec<Vec<u8>> = vec![];
 
-    let mut file: ZipFile<'_> = zip.by_index(index).map_err(|e: ZipError| e.to_string())?;
-    if file.name().ends_with(".jpg") || file.name().ends_with(".png") {
-        let mut buffer: Vec<u8> = Vec::new();
-        file.read_to_end(&mut buffer).map_err(|e: Error| e.to_string())?;
+    let index_start = page * count;
+    let index_end = (page + 1) * count;
+    let zip_length = zip.len();
 
-        // Optional: Validate the image
-        let _ = ImageReader::new(std::io::Cursor::new(&buffer))
-            .with_guessed_format()
-            .map_err(|e: Error| e.to_string())?
-            .decode()
-            .map_err(|e: ImageError| e.to_string())?;
+    for index in index_start..index_end {
+        if index < zip_length {
+            let mut file: ZipFile<'_> = zip.by_index(index).map_err(|e: ZipError| e.to_string())?;
+            if file.name().ends_with(".jpg") || file.name().ends_with(".png") {
+                let mut buffer: Vec<u8> = Vec::new();
+                file.read_to_end(&mut buffer).map_err(|e: Error| e.to_string())?;
 
-        images.push(buffer);
+                // Optional: Validate the image
+                // validate_image(buffer);
+
+                images.push(buffer);
+            }
+        }
+        else { break };
     }
 
     Ok(images)
 }
 
 #[tauri::command]
-fn extract_images(path: String) -> Result<Vec<Vec<u8>>, String> {
+async fn extract_images(path: String) -> Result<Vec<Vec<u8>>, String> {
     let zip_reader: File = File::open(&path).map_err(|e: Error| e.to_string())?;
     let mut zip: ZipArchive<File> = ZipArchive::new(zip_reader).map_err(|e: ZipError| e.to_string())?;
 
     let mut images: Vec<Vec<u8>> = vec![];
-
+    
+    let start: Instant = Instant::now();
     for index in 0..zip.len() {
         let mut file: ZipFile<'_> = zip.by_index(index).map_err(|e: ZipError| e.to_string())?;
+        
+        println!("comic file {}", file.name());
+
         if file.name().ends_with(".jpg") || file.name().ends_with(".png") {
             let mut buffer: Vec<u8> = Vec::new();
             file.read_to_end(&mut buffer).map_err(|e: Error| e.to_string())?;
-
-            // Optional: Validate the image
-            let _ = ImageReader::new(std::io::Cursor::new(&buffer))
-                .with_guessed_format()
-                .map_err(|e: Error| e.to_string())?
-                .decode()
-                .map_err(|e: ImageError| e.to_string())?;
-
+            
             images.push(buffer);
         }
     }
+    let duration: Duration = start.elapsed();
+    println!("loading images toke {:?}", duration);
 
     Ok(images)
 }
@@ -71,6 +75,23 @@ fn extract_images(path: String) -> Result<Vec<Vec<u8>>, String> {
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
+
+// Optional: Validate the image (takes 2s for each image)
+// fn validate_image(buffer: Vec<u8>) -> Result<str, _>{
+//     let start: Instant = Instant::now();
+    
+//     let _ = ImageReader::new(std::io::Cursor::new(&buffer))
+//         .with_guessed_format()
+//         .map_err(|e: Error| e.to_string())?
+//         .decode()
+//         .map_err(|e: ImageError| e.to_string())?;
+    
+//     let duration: Duration = start.elapsed();
+    
+//     println!("optional image validation toke {:?}", duration);
+
+//     return Ok("all good");
+// }
 
 fn main() {
     tauri::Builder::default()
