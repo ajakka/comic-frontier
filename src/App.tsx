@@ -4,73 +4,45 @@ import { invoke } from '@tauri-apps/api/tauri'
 import "./App.css";
 
 function App() {
-
   const [localPath, setPath] = React.useState<string>();
-  const [images, setImages] = React.useState<string[]>([]);
+
+
   const [index, setIndex] = React.useState<number>(0);
+  const [image, setImage] = React.useState<string>();
 
-  const [page, setPage] = React.useState<number>(0);
-  const [count, setCount] = React.useState<number>(4);
-
-  async function extractAllImagesFromZip() {
-    try {
-      let path = "";
-      performance.now()
-      if (localPath === undefined) {
-        path = await dialog.open({ directory: false }) as string;
-        // setPath(path);
-      }
-      else {
-        path = localPath;
-      }
-      console.log("commic path: ", path);
-
-      let startTime = performance.now();
-      const imgBuffers: number[][] = await invoke('extract_images', { path });
-      let endTime = performance.now();
-
-      console.log("commic buffers toke:", ((endTime - startTime) / 1000) + "s", "and has:", imgBuffers.length, "imgBuffers elements");
-
-      startTime = performance.now();
-      const dataUrls = imgBuffers.map(buffer => {
-        const imgBlob = new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' });
-        return URL.createObjectURL(imgBlob);
-      });
-      endTime = performance.now();
-      console.log("commic data-url toke:", ((endTime - startTime) / 1000) + "s", "and has:", dataUrls.length, "dataUrls elements");
+  const [total, setTotal] = React.useState<number>(0);
+  const [loading, setLoading] = React.useState<boolean>(false);
+  const [loadingTime, setLoadingTime] = React.useState<number>(0);
 
 
-      startTime = performance.now();
-      setImages(dataUrls);
-      endTime = performance.now();
-      console.log("setting state toke:", ((endTime - startTime) / 1000) + "s", "and has:", dataUrls.length, "elements");
-
-    } catch (error) {
-      console.log(error);
-    }
-  }
-
-  async function extractImagesFromZip() {
+  async function loadImages() {
     try {
       const path = await getComicPath();
+      const totalImages: number = await invoke('load_images', { path });
 
-      const imgBuffers: number[][] = await invoke('extract_image_at', { path, page, count });
-
-      const dataUrls = imgBuffers.map(buffer => {
-        const imgBlob = new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' });
-        return URL.createObjectURL(imgBlob);
-      });
-
-      setPage(page + 1)
-      setImages([...images, ...dataUrls]);
-
+      setTotal(totalImages);
     } catch (error) {
       console.log(error);
     }
   }
+
+  async function getImageAtStateIndex() {
+    try {
+      if (index >= 0 && index < total) {
+        const image: number[] = await invoke('get_image_at', { index });
+        const dataUrl = (await convertBuffersToBlobs([image]))[0];
+
+        setImage(dataUrl);
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
 
   async function getComicPath() {
     let path = "";
+    console.log("localPath", localPath);
 
     if (localPath === undefined) {
       path = await dialog.open({ directory: false }) as string;
@@ -83,46 +55,82 @@ function App() {
     return path
   }
 
-  function prev() {
-    if (index > 0) {
-      setIndex(index - 1)
-      extractImagesFromZip(index - 1)
-    }
-    else {
-      setIndex(0)
-      extractImagesFromZip(0)
-    }
+  function convertBuffersToBlobs(imgBuffers: number[][]): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      // setTimeout(() => {
+      let dataUrls: string[] = []
+      for (let buffer of imgBuffers) {
+        const imgBlob = new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' });
+        dataUrls.push(URL.createObjectURL(imgBlob));
+      }
+      resolve(dataUrls);
+      // }, 0);
+    });
   }
 
-  function next() {
-    setIndex(index + 1)
-    extractImagesFromZip(index + 1)
-  }
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      let newIndex = index;
+      if (e.key === 'ArrowRight' && index < total) {
+        newIndex = index + 1;
+      }
+      if (e.key === 'ArrowLeft' && index > 0) {
+        newIndex = index - 1;
+      }
+      setIndex(newIndex);
+      setLoading(true);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  });
+
+  React.useEffect(() => {
+    let start = performance.now();
+
+    getImageAtStateIndex()
+      .then(_ => {
+        setLoading(false);
+        setLoadingTime(performance.now() - start)
+      });
+
+  }, [index]);
 
   return (
-    <div>
-      <div>
-        <p>index: {index}</p>
+    <div style={{ display: "flex" }}>
+      <div style={{ flex: 1 }}>
+        <p>page: {index}</p>
+        {loading && <p>Loading</p>}
+        {loadingTime && <p>Loading toke: {loadingTime}</p>}
 
-        <button type="button" onClick={() => extractImagesFromZip()}>
+        <p>_______________</p>
+
+        <button
+          type="button"
+          onClick={() => {
+            let start = performance.now();
+
+            loadImages()
+              .then(_ => getImageAtStateIndex())
+              .then(_ => {
+                setLoading(false);
+                setLoadingTime(performance.now() - start);
+              })
+          }}>
           Select a .cbz file
-        </button>
-        <button type="button" onClick={() => prev()}>
-          Prev
-        </button>
-        <button type="button" onClick={() => next()}>
-          Next
         </button>
       </div>
 
-      <div>
-        {images.map((src, index) =>
-          <img
-            key={index}
-            src={src}
-            loading={"lazy"}
-            alt={`Image ${index}`}
-            style={{ width: "100%" }} />)}
+      <div style={{ flex: 1 }}>
+        {image && <img
+          key={index}
+          src={image}
+          // loading={"lazy"}
+          alt={`Image ${index}`}
+          style={{ height: "100vh" }} />}
+
       </div>
     </div>
   );
