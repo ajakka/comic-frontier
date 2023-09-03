@@ -1,8 +1,8 @@
 [package]
 name = "comic-frontier"
-version = "0.0.0"
+version = "0.1.0"
 description = "A Tauri App"
-authors = ["you"]
+authors = ["Abderrahim"]
 license = ""
 repository = ""
 edition = "2021"

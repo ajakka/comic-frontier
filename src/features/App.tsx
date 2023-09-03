@@ -1,7 +1,10 @@
 import React from "react";
+
 import { dialog } from "@tauri-apps/api";
 import { invoke } from '@tauri-apps/api/tauri'
-import "./App.css";
+
+import { Alignment, Button, ButtonGroup, H5, IconName, Popover, Switch } from "@blueprintjs/core";
+
 
 function App() {
   const [localPath, setPath] = React.useState<string>();
@@ -98,9 +101,15 @@ function App() {
 
   }, [index]);
 
+
   return (
     <div style={{ display: "flex" }}>
       <div style={{ flex: 1 }}>
+
+        <Popover content={<div >Hello</div>} placement="bottom-start">
+          <Button text="File" rightIcon="caret-right" icon="document" />
+        </Popover>
+
         <p>page: {index}</p>
         {loading && <p>Loading</p>}
         {loadingTime && <p>Loading toke: {loadingTime}</p>}
