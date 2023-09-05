@@ -5,8 +5,7 @@
 
 extern crate lazy_static;
 extern crate parking_lot;
-
-use std::time::{Instant, Duration};
+extern crate natord;
 
 use std::fs::File;
 use std::io::{Error, Read};
@@ -26,22 +25,35 @@ async fn load_images(path: String) -> Result<usize, String> {
     let zip_reader: File = File::open(&path).map_err(|e: Error| e.to_string())?;
     let mut zip: ZipArchive<File> = ZipArchive::new(zip_reader).map_err(|e: ZipError| e.to_string())?;
 
-    let mut images: Vec<Vec<u8>> = vec![];
-
+    // Collect the file names and their indexes
+    let mut file_infos: Vec<(usize, String)> = vec![];
     for index in 0..zip.len() {
-        let mut file: ZipFile<'_> = zip.by_index(index).map_err(|e: ZipError| e.to_string())?;
-        if file.name().ends_with(".jpg") || file.name().ends_with(".png") {
-            let mut buffer: Vec<u8> = Vec::new();
-            file.read_to_end(&mut buffer).map_err(|e: Error| e.to_string())?;
-            images.push(buffer);
+        let file: ZipFile = zip.by_index(index).map_err(|e: ZipError| e.to_string())?;
+        let file_name = file.name().to_string();
+        if file_name.ends_with(".jpg") || file_name.ends_with(".png") {
+            file_infos.push((index, file_name));
         }
     }
 
-    let mut image_map = IMAGES.lock();
+    // Sort by file name
+    file_infos.sort_by(|a, b| natord::compare(&a.1, &b.1));
+
+    let mut images: Vec<Vec<u8>> = vec![];
+
+    // Process the sorted files
+    for (index, _) in file_infos.iter() {
+        let mut file: ZipFile = zip.by_index(*index).map_err(|e: ZipError| e.to_string())?;
+        let mut buffer: Vec<u8> = Vec::new();
+        file.read_to_end(&mut buffer).map_err(|e: Error| e.to_string())?;
+        images.push(buffer);
+    }
+
+    let mut image_map: parking_lot::lock_api::MutexGuard<'_, parking_lot::RawMutex, Vec<Vec<u8>>> = IMAGES.lock();
     *image_map = images;
 
     Ok(image_map.len())
 }
+
 
 #[tauri::command]
 async fn get_image_at(index: usize) -> Result<Vec<u8>, String> {

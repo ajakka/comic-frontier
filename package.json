@@ -11,6 +11,7 @@
 	},
 	"dependencies": {
 		"@blueprintjs/core": "^5.3.0",
+		"@blueprintjs/datetime": "^5.0.10",
 		"@blueprintjs/icons": "^5.1.6",
 		"@tauri-apps/api": "^1.2.0",
 		"react": "^18.2.0",
