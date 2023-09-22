@@ -54,6 +54,43 @@ async fn load_images(path: String) -> Result<usize, String> {
     Ok(image_map.len())
 }
 
+#[tauri::command]
+async fn load_all_images(path: String) -> Result<Vec<Vec<u8>>, String> {
+    let zip_reader: File = File::open(&path).map_err(|e: Error| e.to_string())?;
+    let mut zip: ZipArchive<File> = ZipArchive::new(zip_reader).map_err(|e: ZipError| e.to_string())?;
+
+    // Collect the file names and their indexes
+    let mut file_infos: Vec<(usize, String)> = vec![];
+    for index in 0..zip.len() {
+        let file: ZipFile = zip.by_index(index).map_err(|e: ZipError| e.to_string())?;
+        let file_name = file.name().to_string();
+        if file_name.ends_with(".jpg") || file_name.ends_with(".png") {
+            file_infos.push((index, file_name));
+        }
+    }
+
+    // Sort by file name
+    file_infos.sort_by(|a, b| natord::compare(&a.1, &b.1));
+
+    let mut images: Vec<Vec<u8>> = vec![];
+
+    // Process the sorted files
+    for (index, name) in file_infos.iter() {
+        let mut file: ZipFile = zip.by_index(*index).map_err(|e: ZipError| e.to_string())?;
+        let mut buffer: Vec<u8> = Vec::new();
+
+        println!("{}", name);
+
+        file.read_to_end(&mut buffer).map_err(|e: Error| e.to_string())?;
+        images.push(buffer);
+    }
+
+
+
+    Ok(images)
+}
+
+
 
 #[tauri::command]
 async fn get_image_at(index: usize) -> Result<Vec<u8>, String> {
@@ -69,6 +106,7 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             load_images,
+            load_all_images,
             get_image_at,
         ])
         .run(tauri::generate_context!())
